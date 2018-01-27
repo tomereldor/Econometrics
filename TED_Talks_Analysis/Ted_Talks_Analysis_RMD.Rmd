@@ -1,0 +1,433 @@
+---
+title: "TED Talks Analysis"
+author: "Tomer Eldor"
+date: "1/26/2018"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message = FALSE,warning = FALSE)
+```
+
+# What Makes A Ted Talk Popular?
+Tomer Eldor
+January 26, 2018
+
+*Have you ever wondered what makes some TED talks more popular than others?* Well, I’ve analyzed a dataset of 2550 ted talks to get some answers for this question. May aim was to explore which of my available variables of a given talk, such as the number of comments, number of languages translated, duration of the talk, number of tags, or day it was published online– are a strong predictor of its popularity, measured in number of views. 
+*I don’t believe these analyses serve as a good causal inference*, since results wouldn’t be matched with these variables, their explanatory power isn’t rigorous enough. The available numerical parameters I had in hand are not sufficient for that kind of a conclusion; I couldn’t match the content that really matters to compare apples to apples, and even with controlling with multiple regression – not all things are equal (ceteris paribus assumption is still not met). However, I was able to get a decent predictor and understand which variables are most strongly associated with higher view counts. 
+*What data did I have?* The dataset includes the name, title, description and URL of each of the 2550 talks, name and occupation of the main speaker, number of speakers, duration of the talk, the TED event and date it was filmed at, date it was published online, number of comments, languages translated and views. It also includes data points as the array of associated tags, ratings, and related talks, but as inside arrays and these need transformations before they can be used. For a full list, see comment.  
+
+
+
+
+## Loading dataset and libraries
+```{r}
+
+library(ggplot2) # Data visualisation
+library(reshape2)
+library(corrplot)
+library(dplyr) 
+library(stringr) # String manipulation
+library(anytime)
+library(data.table)
+
+ted = read.csv("./data/ted_main.csv",header=TRUE,stringsAsFactors = TRUE)
+transcripts=read.csv("./data/transcripts.csv",header=TRUE,stringsAsFactors = FALSE)
+```
+
+
+
+
+# Summary Statistics 
+Here are some in a Summary Statistics - a few tables and appropriate graphs that describe the data. 
+
+
+## 1 - Histograms
+Let’s examine the distributions of the key parameters that we’ll be using. To the right are histograms of most of our numerical variables. Below are some more detailed histograms, with a white line for the median and blue line for the mean. ¬¬
+
+
+#### Histograms of all numerical variables
+```{r}
+print(summary(ted))
+
+melted_ted <- melt(ted)
+ggplot(data = melted_ted, mapping = aes(x = value)) + 
+    geom_histogram(bins = 30) +  # 30 bins represented the distribution well from trying values between 10 and 100, and is also the minimum for normal distribution so it can show well if we'd have a normal distribution.
+  # tried to force non-scientific notation, but the numbers are too long to represent, so I removed it.
+   #scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) +  
+    facet_wrap(~variable, scales = 'free_x')
+```
+
+
+
+#### Converting Dates into variables
+```{r}
+ted$date_pub = anydate(ted$published_date)
+ted$month = month(ted$date_pub)
+ted$year = year(ted$date_pub)
+ted$day = weekdays(ted$date_pub,abbreviate = TRUE)
+head(ted,3)
+```
+
+
+
+#### Converting tags variable to number of tags
+```{r}
+typeof(ted$tags[1])
+split(as.character(ted$tags[1]),", ")
+#splitting did not work well. I'll just use the count of how many tags for now
+library(stringr)
+ted$num_tags <- str_count(ted$tags, ",") +1 #counting how many tags by counting the number of commas and adding one. I verified it worked well.
+# quick histogram of the number of tags
+qplot(x=num_tags,data=ted)
+
+```
+
+Most frequent numbers of tages are around 4-7 tags. 
+Since the distribution is skewed, regression might work best over a polynomial or factored (cateogircal) representation of this.
+I'll inspect this later
+
+
+### Distribution of the duration of a talk 
+```{r,fig.height=3,fig.width=4}
+median_duration <- median(ted$duration)
+cat("Median number of duration: ", median(ted$duration))
+print("")
+cat("Mean number of duration: ", mean(ted$duration))
+# simple r histogram:
+# hist(ted$duration)
+# a nicer histogram using ggplot, also adding median number of duration line
+duration_hist = ggplot(ted,aes(duration,..count..)) + 
+  geom_histogram(fill="turquoise") +
+  labs(x="Duration",y="How Many Talks in that duration",title="Histogram (Distribution) of Durations of TedTalks") + 
+  #scale_x_continuous(limits=c(0,1500),breaks=seq(0,1500,150)) + 
+  geom_vline(aes(xintercept = median(ted$duration)),linetype=4,size=1,color="white") +
+  geom_vline(aes(xintercept = mean(ted$duration)),linetype=4,size=1,color="blue")
+duration_hist
+
+```
+
+### Distriubtion of number of views
+```{r,fig.height=2,fig.width=4}
+### Distribution of the number of views (in the discussion) per talk
+median_views <- median(ted$views)
+cat("Median number of views: ", median(ted$views))
+cat("Mean number of views: ", mean(ted$views))
+# simple r histogram:
+hist(ted$views)
+# a nicer histogram using ggplot, also adding median number of views line
+views_hist = ggplot(ted,aes(views,..count..)) + 
+  geom_histogram(fill="tomato") +
+  labs(x="views",y="Count",title="Histogram (Distribution) of Number Of views", scientific = FALSE) +
+  scale_x_continuous(limits=c(0,10000000)) + #,breaks=seq(0,10000000,10000),labels = function(x) format(x, scientific = FALSE) ) + 
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  geom_vline(aes(xintercept = median(ted$views)),linetype=4,size=1,color="white") +
+  geom_vline(aes(xintercept = mean(ted$views)),linetype=4,size=1,color="blue")
+
+views_hist
+
+```
+
+
+### Distribution of the number of comments (in the discussion) per talk
+```{r,fig.height=2,fig.width=4}
+median_comments <- median(ted$comments)
+cat("Median number of comments: ", median(ted$comments))
+cat("Mean number of comments: ", mean(ted$comments))
+# simple r histogram:
+hist(ted$comments)
+# a nicer histogram using ggplot, also adding median number of comments line
+comments_hist = ggplot(ted,aes(comments,..count..)) + 
+  geom_histogram(fill="navy") +
+  labs(x="Comments",y="Count",title="Histogram (Distribution) of Number Of Comments") + 
+  #scale_x_continuous(limits=c(0,1500),breaks=seq(0,1500,150)) + 
+  geom_vline(aes(xintercept = median(ted$comments)),linetype=4,size=1,color="white") +
+  geom_vline(aes(xintercept = mean(ted$comments)),linetype=4,size=1,color="blue")
+
+comments_hist
+
+```
+
+The number of comments are strongly skewed left towards 0 comments. Therefore, their mean (191) is not the most representative, but median is more representative: 118.
+
+
+
+
+Let's explore occupations.
+Let's first see 10 most popular occuptions
+```{r}
+occupation_df <- data.frame(table(ted$speaker_occupation))
+colnames(occupation_df) <- c("occupation", "appearances")
+occupation_df <- occupation_df %>% arrange(desc(appearances))
+head(occupation_df, 10)
+
+
+```
+
+
+```{r}
+ggplot(head(occupation_df,30), 
+       aes(x=reorder(occupation, appearances), 
+           y=appearances, fill=occupation)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  geom_bar(stat="identity") + 
+  guides(fill=FALSE)
+```
+
+```{r}
+ted_occupation_summary = ted %>% group_by(speaker_occupation) %>% summarise(meanviews=mean(views)) %>% arrange(desc(meanviews)) 
+
+
+ggplot(ted_occupation_summary,
+  aes(factor(speaker_occupation,levels=speaker_occupation), meanviews,fill=meanviews))+
+  geom_bar(stat="identity")+
+  labs(x="Occupation" ,y="Mean Views",title="Occupation Vs Views")
+  #scale_fill_brewer(name="Occupation",palette = "Set2")#+
+  #scale_y_discrete(labels=scales::comma)
+
+```
+
+
+
+Days of week Published vs Views
+```{r}
+
+# group by day and count total views, using dpyler
+ted_by_day = ted %>% group_by(day) %>% summarise(mean_views=mean(views)) %>% arrange(desc(mean_views)) 
+ted_by_day$day <- factor(ted_by_day$day, levels = c("Mon","Tue","Wed","Thu","Fri","Sat","Sun"))
+
+ggplot(data = ted_by_day, aes(x = factor(day), y = mean_views, fill = mean_views)) +
+  geom_bar(stat="identity") +
+  labs(x="Day of week published",y="Mean Views",title="Mean Views Per Day of Week") 
+  
+  
+  
+```
+
+
+So day of week does seem to have some association with average (mean) views! Ted Talks published on weekends seem to have much less views, with Saturday being the lowest, and Friday is the most popular day for ted talks published day. 
+Since it seems that the major effect is "Weekend or not", I'm creating a binary dummy variable for is it weekend or not to regress upon later.
+
+```{r}
+# creating a is_weekend variable
+library(chron)
+ted$weekend <- as.numeric(is.weekend(ted$date_pub))
+
+```
+
+Insights and description from the distributions:
+	Number of views is also a Poisson like distribution skewed leftwards
+	Duration of talks is closer to a normal distribution, but with a wide right-side tail of a few talks at longer durations, around a mean of 14 minutes and median of 12 minutes. Almost all talks range between 1-18 minutes (maximum length of a normal Ted talk).
+	Number of comments is a Poisson distribution (visually resembling an exponential distribution, but it is not technically since comments are measured at discrete numbers) strongly skewed to the minimum of 0 comments for the unpopular videos.
+	Number of tags also is a Poisson distribution skewed leftwards, peaks between 4-7 tags. 
+	Number of languages of translations has a peak at 0 for unpopular talks, but mostly is between 20-40 languages offered. 
+	While the film dates are low before 2012, they are all published at a much more uniform rate. 
+
+
+## 2 - Correlations between parameteres 
+First is a correlation (pairs) scatterplot matrix between each pair of numerical variables; Below is a correlation matrix with colors representing the intensity of the correlation from 0 (white) to dark blue (+1) or dark striped red (strong negative correlation, -1), and with asterisks (***) signifying significance by p-values. 
+
+
+
+## Correlations
+
+```{r}
+colnames(ted)
+col_numeric =  c(17,1,3,6,10,23) # comments,duration,film_date,languages,views)
+ted_numeric = ted[,col_numeric]
+pairs(ted_numeric)
+
+```
+We see some correlations there but not many clear ones; between views, comments and languages.
+No clear corerlation between views and duration or published date. 
+
+```{r}
+cor_matrix <- cor(ted_numeric)
+res <- cor.mtest(ted_numeric, conf.level = .95)
+res
+corrplot::corrplot(cor_matrix,method="shade",bg="white",title="Correlation Matrix (by color) and significane (*)", 
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+```
+
+These correlation plots and correlation matrix show us the following conclusions:
+* There is a relatively higher positive correlation between number of comments and views, which makes sense (more audience, more comments); 
+* Some positive correlation between number of languages of translation and number of views (0.38) and number of comments (0.32)
+* Small negative correlation between duration and number of languages; the shorter the talk, the more tranlsated languages there are, probably because it is easier to translate.
+
+
+  
+Most of the parameters don’t have strong correlations. 
+	Naturally, there was a very high correlation between published data and filmed date. Filmed date seemed to be less associated with views numerically and logically – since the audience is more affected by the date a ted talk is released than whether it was recorded a month ago or a year ago. 
+	There is a relatively higher positive correlation between number of comments and views, which makes sense (more audience, more comments); 
+	Some positive correlation between number of languages of translation and number of views (0.38) and number of comments (0.32)
+	Small negative correlation between duration and number of languages; the shorter the talk, the more translated languages there are, probably because it is easier to translate.
+
+## 3 - Correlation Of Paramteres with Numbers of Views
+How do these variables correlate with views? Is it a linear relationship, nonlinear, or non? This is important to understand to know how to insert them into the regression if at all. 
+
+Here I'll start inspecting what are the correlations between vriables and the dependent variable, and what kind of relationship would suit to include in the regression between them (linear? polynomial? factor? none?)
+```{r}
+
+# Views By Duraion 
+ggplot(ted, aes(duration, views, size = views, col = duration)) + 
+  geom_point(alpha=0.8) + 
+  geom_smooth(method = loess, colour="White") + 
+  geom_smooth(method = lm, colour="Pink") + 
+  labs(x="Duration",y="Views",title="Views By Duration") #+
+
+# Views By Comments
+ggplot(ted, aes(comments, views, size = views, col = comments)) + 
+  geom_point(alpha=0.8) + 
+  geom_smooth(method = loess, colour="White") + 
+  geom_smooth(method = lm, colour="Pink") + 
+  labs(x="Comments",y="Views",title="Views By Comments") #+
+
+
+# Views By Languages 
+ggplot(ted, aes(languages, views, size = views, col = languages)) + 
+  geom_point(alpha=0.8) + 
+  geom_smooth(method = loess, colour="White") + 
+  geom_smooth(method = lm, colour="Pink") + 
+  labs(x="Languages",y="Views",title="Views By Languages") 
+
+# Views By Number of Tags 
+ggplot(ted, aes(num_tags, views, size = views, col = num_tags)) + 
+  geom_point(alpha=0.8) + 
+  geom_smooth(method = loess, colour="White") + 
+  geom_smooth(method = lm, colour="Pink") +  
+  labs(x="Languages",y="Views",title="Views By Number of Tags") 
+
+```
+
+It seems that non of these loose much information by a linear regression versus a LOESS regression, which is arbitrarily flexible and would reveal a clear non-linear shape. while some of them do have nonlinear shapes - from a closer look, it is only in the tail where data is scarce and it is biasd by the few datapoints there and some outliers (as in the Comments correlation). Therefore, inputting the regressor as a linear fit might be sufficiently explanatory.
+
+
+
+So, day of week does seem to have some association with average (mean) views! Ted Talks published on weekends seem to have much less views, with Saturday being the lowest, and Friday is the most popular day for ted talks published day. 
+ Below are scatterplots with LOESS flexible regression in white and linear regression in pink, to see how different would a linear shape look from a flexible moving average. This shows us that usually, except for in the tales of the distributions of these variables, where there are only a couple of outliers’ data, the linear model described the relationship somewhat well. 
+  
+
+Surprisingly, duration had almost no consistent correlation with number of views; except for the fact that most popular talks were closer to 8-20 minutes. Number of comments is, obviously, very well correlated with number of views and so does number of languages – they all come from having many viewers. Thus, it is not “fair” to predict views based on these factors, and in the real world, we couldn’t use these parameters to predict, since they are not causes for more views, but they are also a result of many views, and a cause in a reinforcing feedback loop: the more comments, the more engaged the community is around the talk and likelier to spread; the more languages, the more viewers can watch; and the more viewers, the more audience there is to comment and translate. The rest had a small linear effect, where that didn’t deviate much, though small. 
+
+
+#### Regression Models
+I inspected how does each of hte relevant variables explain the view count individually, and how does then adding (the relevant) one to a multiple regression improves its performance.
+
+```{r}
+
+fit1 <- lm(views  ~ comments, data = ted)
+summary(fit1)
+fit2 <- lm(views  ~ languages, data = ted)
+summary(fit2)
+fit3 <- lm(views  ~ duration, data = ted)
+summary(fit3)
+
+# Adding date related information using just a weekday binary
+fit4 <- lm(views ~ ted$weekend, data=ted)
+summary(fit4)
+# weekend was significant, with a large slope (-836986) but didn't explain data well alone.
+
+fit5 <- lm(views  ~ num_tags, data = ted)
+summary(fit5)
+```
+
+
+The comments and languages where significantly and (relatively highly) positively correlated with views.
+Day of week seeemed to have some correlation - weekend days reduced the views. 
+I therefore just regress on a binary variable weekend or weekday, since the nunmber of the day of the week didn't have a clear correlation.
+
+
+
+
+### Excluded Variables
+
+```{r}
+# Excluded anlaysis
+
+summary(lm(views  ~ event, data = ted))
+# the specific ted location / event conference did not show any significant effects on views 
+
+summary(lm(views  ~ ted$date_pub, data = ted))
+# the date published didn't explain at all and had a very small coefiicient which wasn't significant
+
+
+#fit_occ <- lm(views ~ factor(ted$speaker_occupation), data = ted)
+#summary(fit_occ)
+```
+
+Only a few occupations were significant in predicting view counts:
+factor(ted$speaker_occupation)Author/educator                                                           < 2e-16 ***
+factor(ted$speaker_occupation)Autonomous systems pioneer                                               0.012050 *  
+factor(ted$speaker_occupation)Beatboxer                                                                0.006905 ** 
+factor(ted$speaker_occupation)Blogger                                                                  0.001010 ** 
+factor(ted$speaker_occupation)Bionics designer                                                         0.022110 *  
+factor(ted$speaker_occupation)Anthropologist, expert on love                                           0.023640 *  
+
+These are correlated with a number of the occupations of the most popular ted talk; for example, Author/educator is the occupation of Ken Robinson, who speaks at the most popular Ted Talk of all times and many other popular talks.
+However, the regression still wasn't successful, and while the R squared was 0.53, the adjusted R-squared was -0.08, because of the huge amount of predictors. 
+
+
+
+
+
+
+## Combining regressors into multiple regression
+```{r}
+
+
+# Adding variables one-by-one
+fit6 <- lm(views  ~ comments + languages, data = ted)
+fit7 <- lm(views  ~ comments + languages + num_tags, data=ted)
+fit8 <- lm(views  ~ comments + languages + num_tags + weekend , data=ted)
+fit9 <- lm(views  ~ comments + languages + num_tags + weekend + duration, data=ted)
+
+summary(fit1) #just comments
+summary(fit6)
+summary(fit7)
+summary(fit8)
+summary(fit9)
+
+```
+
+
+
+
+
+#### Perform tests for significance of the parameters and present the results (1-2 short paragraphs).
+
+
+```{r}
+library(stargazer)
+stargazer(fit1, fit2, fit3, fit4, fit6, fit7, fit8, fit9, type="text", title="All Models Compared", align=TRUE, no.space=TRUE, font.size = "footnotesize")
+
+```
+
+
+# Models and Results 
+ 
+Chosen model is the last model since it had the best explanatory power in terms of R squared, adjusted R squared, p value and F-statistic, although it had only marginal improvements over model (5) with only comments and languages translated.
+Model 5: Y(views)=β_0+ β_1 comments+ β_2 languages+ϵ
+Model 8: Y(views)=β_1 comments+ β_2 languages+ β_3 numtags+ β_4 isweekend+β_5  duration+ϵ 
+For predicting purposes, I would choose model 8 with all variables. For explanatory purposes, I would choose model 5 to explain that comments and languages are by far the most correlated with views and explain most of its variance. 
+Model 5 suggests that every additional comment is associated with 4,044 more views (p-value under 0.01) and that every additional language translated is associated with 60,650 more views (p-value under 0.01). However, the constant is negative (-733) views, which makes no sense, but that comes with the restriction of a linear model. These together explained 0.33 of the variance (both R-squared and adjusted R-squared). The F-statistic
+Y(views)=-733+ 4044*comments+ 60650*languages
+However, adding all the other variables into model 8 improved slightly the R-squared to 0.336 and Adjusted R-squared to 0.334. So, if we are after accuracy for prediction, I would use this latter model:
+Y(views)=-1455238+3931*comments+ 68222*languages+408 duration+ 26625*numtags+ -41407*isweekend
+The results, and particularly model 8, show overall significance. Most variables show significance, although weekend does not, but adding it still improved the explanatory power slightly, so I’m keeping it. F-statistic is relatively lower, and R and R-squared are not great at 0.336 and 0.334 respectively, but the best performance out of this set of models. The constant decreased much more, giving more power to the variables to raise the predicted view count. The coefficients (estimation of the effect) of comments decreased from 4044 to 3931 and was redistributed to higher coefficient for the number of languages and new coefficients for the newly added variables: 408 more views for every additional second, 26625 more views for every additional tag, and this is compensated by reducing the predicted number of views by 41407 if it was published on a weekend.
+
+
+## Conclusion and Implications
+For conclusion, this very limited model does not convey causal relationship well because the fundamental problem of causal inference is not well addressed with these variables, and these predictors are not independent from the y variable, but they are highly related (mostly comments and number of languages which are the best predictors, naturally. I don’t believe that with these available numerical predictors we could have reached a causal inference. Next attempts might use the transcription of the talk to analyze the content, or audio to analyze the level of clapping, or the visuals in the talk and the clothing of the speaker to better predict using the content of the talk.
+Implications
+However, we can see some correlations, even if not causal. So, if you want a higher number of views for a talk, it would be likelier if you:
+	Increase the number of comments in a talk! (get all of your friends to comment and discuss)
+	Increase the languages translated! (get your friends or freelancers to translate)
+	There is no need to make it too short! (probably only works if the talk is really good)
+	Tag it with more topics! 
+	Whatever you do – do NOT publish it on a weekend. Publish it on a Friday!
+ So, go increase your TED Talk’s view count and comment if these strategies worked or not! (and tell me about it, since that would be a helpful small experiment which could reaffirm or reject these results!)
+
