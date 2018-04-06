@@ -1,0 +1,223 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+setwd("~/Documents/GitHub/Econometrics/Econometrics Experiments")
+rm(list = ls())
+library(foreign)
+#library(car)
+library(gplots)
+library(ggplot2)
+#install.packages("plm")
+#library(plm)
+# Panel DATA from http://people.stern.nyu.edu/wgreene/Econometrics/PanelDataSets.htm  
+# World Health Organization Panel Data on Health Care Attainment:  191 Countries, 5 Years (Some countries fewer)
+
+# This data has been used by many researchers to study the Health Care Survey assembled by WHO as part of the YEAR 2000 # World Health Report. On the course bibliography, see, for example, Greene (2004a).  Note, variables marked * were updated # with more recent sources in Greene (2004a). Missing COMPs for some of the variables in this data set are filled by using # fitted COMPs from a linear regression.  To set the proper sample for panel data analysis, use observations for which SMALL # = 0.  To obtain the balanced panel, then use only observations with GROUPTI = 5.
+# The variables in the file are
+# COMP = composite measure of health care attainment; LCOMP = logCOMP
+# DALE = Disability adjusted life expectancy (other measure); LDALE = logDALE
+# YEAR = 1993,...,1997;  TIME = 1,2,3,4,5;  T93, T94, T95, T96, T97 = YEAR dummy variables
+# HEXP = per capita health expenditure; LHEXP = logHEXP; LHEXP2 = log-squaredHEXP
+# HC3 = educational attainment; LHC = logHC3; LHC2 = log-squaredHC3; LHEXPHC = logHEXP * logHC3
+# SMALL = indicator for states, provinces, etc. SMALL > 0 implies internal political unit, = 0 implies country observation
+# COUNTRY = number assigned to country
+# STRATUM = another country indicator
+# GROUPTI = number of observations when SMALL = 0. Usually 5, some = 1, one country = 4.
+# OECD = dummy variable for OECD country (30 countries)
+# GINI = gini coefficient for income inequality
+# GEFF = world bank measure of government effectiveness*
+# VOICE = world bank measure of democratization of the political process*
+# TROPICS = dummy variable for tropical location
+# POPDEN = population density*
+# PUBTHE = proportion of health expenditure paid by public authorities
+# GDPC = normalized per capita GDP; LGDPC = logGDPC; LGDPC2 = log-squaredGDPC 
+
+Panel <- read.csv("WHOdata.csv") 
+#attach(Panel)
+
+
+# export to Israel vs Egypt data
+
+df2 <- read.csv("data-IsraelEgypt.csv")
+#EXTENDED COLUMNS
+# self explanatory
+# Negleted Tropical Diseas (gntd.org (http://gntd.org/))
+
+summary(df2)
+head(df2)
+coplot(GDPC ~ YEAR | COUNTRY, type="b", data=df2)        # Points and lines
+
+df2$LGDPC <- log(df2$GDPC)
+df2$LGDPC_G <- log(df2$GDPC_G)
+
+```
+
+
+# Plotting Stats Israel vs Egypt
+
+```{r}
+# GDP PER CAPITA
+ggplot(data = df2, aes(x=YEAR, y=log(GDPC))) + 
+  geom_point(aes(x=YEAR, y=log(GDPC), color=COUNTRY)) +
+  geom_path(aes(x=YEAR, y=log(GDPC), color=COUNTRY)) +
+  labs(title = "GDP per Capita, Israel & Egypt, 1993-1997", y = "GDP per Capita" )
+
+# GDP GROWTH
+ggplot(data = df2, aes(x=YEAR, y=GDPC_G)) + 
+  geom_point(aes(x=YEAR, y=GDPC_G, color=COUNTRY)) +
+  geom_line(aes(x=YEAR, y=GDPC_G, color=COUNTRY)) +
+  labs(title = "GDP Yearly Growth per Capita, Israel & Egypt, 1993-1997", y = "GDP Growth Percent" )
+
+# LOG GDP PER CAPITA
+ggplot(data = df2, aes(x=YEAR, y=LGDPC)) + 
+  geom_point(aes(x=YEAR, y=LGDPC, color=COUNTRY)) +
+  geom_path(aes(x=YEAR, y=LGDPC, color=COUNTRY)) +
+  labs(title = "LOG GDP per Capita, Israel & Egypt, 1993-1997", y = "LOG GDP per Capita" )
+
+
+
+
+
+
+```
+
+
+# Descriptive Statistics of Constant Factors
+```{r}
+df2["DALE10"] <- df2$DALE / 10
+df2["Health Expense"] <- df2$HEXP / 1000
+df2["Health Comp"] <- df2$COMP / 100
+df2["HealthExp % Public"] <- df2$PUBTHE / 100
+df2["Education"] <- df2$HC3 / 10
+df2["Business_Hurdle"] <- df2$BUSINESS_HURDLES / 100
+ 
+# aggregate means for all variables
+means<-aggregate(df2,by=list(df2$COUNTRY),mean)
+head(means)
+means["COUNTRY"] <- means$Group.1
+head(means)
+
+
+# reshape into long format
+library(reshape2)
+means.long <- melt(means[,c(2:ncol(means))],id.vars="COUNTRY")
+head(means.long)
+
+names(means)
+
+
+### GEOGRAPHICAL FACTORS
+geo <- means.long[means.long$variable %in% c( "DALE10","POPDEN10TH","COASTLINE","SEAS","LATITUDE","SUMMER_TMP","WINTER_TMP"),]
+
+library(ggplot2)
+ggplot(geo,aes(x=variable,y=value,fill=factor(COUNTRY)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_color_manual(name="COUNTRY",breaks=c(1, 2), 
+                     values = c("red","blue"), labels=c("Egypt", "Israel"))+
+  guides(fill=guide_legend(title=""))+
+  theme(legend.position = "top")+
+  labs(title = "Geographical Indicators", x="Indicator", y="Mean Value" )
+
+
+### INSTITUTIONAL FACTORS
+inst <- means.long[means.long$variable %in% 
+c( "GEFF","VOICE","HealthExp % Public","GINI","Health Expense","Education","Health Comp", "CORRUPT_CLEAN", "Business_Hurdle"),]
+
+
+
+ggplot(inst,aes(x=variable,y=value,fill=factor(COUNTRY)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_color_manual(name="COUNTRY",breaks=c(1, 2), 
+                     values = c("red","blue"), labels=c("Egypt", "Israel"))+
+  guides(fill=guide_legend(title=""))+
+  theme(legend.position = "top")+
+  labs(title = "Institutional Indicators", x="Indicator", y="Mean Value" )
+
+```
+
+
+
+
+
+
+# COMPLETE PANEL DATA 
+
+```{r}
+
+#1. Descriptive statistics
+summary(Panel)
+coplot(GDPC ~ YEAR | COUNTRY, type="b", data=Panel)        # Points and lines
+
+# outliers
+
+# error bars show 95% confidence interval
+Panel['HEXP100'] <- HEXP/100
+
+#2. pooled model
+ols <- lm(COMP ~ HEXP + GINI, data = Panel)
+summary(ols)
+
+#3. COUNTRY fixed effects
+COUNTRY_fe <-lm(COMP~HEXP +GINI + factor(COUNTRY)-1, data = Panel)
+summary(COUNTRY_fe)
+# F test for significance of individual fixed effects
+pFtest(COMP~HEXP +GINI, data = Panel,
+       effect = "individual", model = "within")
+
+# YEAR fixed effects
+YEAR_fe <-lm(COMP~HEXP +GINI + factor(YEAR)-1, data = Panel)
+summary(YEAR_fe)
+# F test for significance of time fixed effects
+pFtest(COMP~HEXP +GINI, data = Panel,
+       effect = "time", model = "within")
+
+# YEAR and time fixed effects
+COUNTRY_YEAR_fe<-lm(COMP~HEXP +GINI +factor(COUNTRY)+ factor(YEAR)-1, data = Panel)
+summary(COUNTRY_YEAR_fe)
+# F test for significance of time and individual fixed effects
+pFtest(COMP~HEXP +GINI, data = Panel,
+       effect = "twoways", model = "within")
+#hist(HEXP/10)
+#hist(GINI)
+```
+
+
+
+# Fixed Versus Random Effects, Hausman Test
+```{r}
+rm(list = ls())
+library(foreign)
+library(car)
+library(gplots)
+library(plm)
+
+data("Grunfeld", package = "plm")
+Panel <- pdata.frame(Grunfeld, c("firm","year")) # set panel structure
+summary(Panel)
+# the same data set of 10 firms over 20 years as in last class' activity
+
+formula <-value~inv +capital
+
+# estimate FE (Fixed Effects) model  with Panel Model plm()
+fe <- plm(formula, data =Panel, model = 'within')
+summary(fe)
+
+# estimate RE (Random Effects) model with Panel Model plm()
+re<-plm(formula, data = Panel, model = 'random')
+summary(re)
+
+# Hausman Test to check for inconsistency inspecification in Panel Data models
+phtest(fe, re)
+# we reject the null that none of the models are inconsistnet; one model is inconsistent, whihc must be the random effects one
+
+# Present summary statistics that you think are relevant.
+# Did you find that the FE and RE estimates were different? Describe the differences and interpret the coefficients.
+# Why is there no intercept in the FE model?
+
+
+```
+
