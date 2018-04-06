@@ -1,0 +1,275 @@
+---
+title: "SS144 Econ - Growth Theory Israel Egypt"
+author: "Tomer Eldor"
+date: "4/2/2018"
+output: html_document
+---
+
+```{r}
+setwd("~/R/SS144")
+rm(list = ls())
+library(data.table)
+library(dplyr)
+library(foreign)
+library(ggplot2)
+
+```
+
+
+# Starting with Worldbank Data and manually collected data in csv file
+
+
+
+```{r}
+
+worldbank <- read.csv("./data/worldbank_data.csv")
+head(worldbank)
+
+worldbank_dt = data.table(worldbank)
+
+
+```
+
+
+
+```{r}
+# renaming columns
+ncols = ncol(worldbank_dt) 
+#wb_dt <- na.omit(worldbank_dt, cols = c(6:ncols))
+
+
+new_colnames <- gsub(pattern = "X.*YR", replacement = "", x = names(worldbank_dt))
+new_colnames <- gsub(pattern = "[.]", replacement = "", x = new_colnames)
+
+names(worldbank_dt) <- new_colnames
+head(worldbank_dt)
+View(worldbank_dt)
+```
+
+
+
+
+```{r}
+wgi <- read.csv("./data/wgi_data_csv.csv")
+wgi_def <- wgi[,c(1:3)] # country and series names
+estimates <-  wgi[ , grepl( "Estimate" , names( wgi ) ) ]
+names(estimates) <- gsub(pattern = ".Estimate", replacement = "", x = names(estimates))
+names(estimates) <- gsub(pattern = "X", replacement = "", x = names(estimates))
+
+wgi_data <- cbind(wgi_def,estimates)
+
+```
+
+
+
+```{r, echo=FALSE}
+library(tidyr)
+
+melted <- melt.data.table(worldbank_dt)
+head(melted)
+
+names(melted) <- c("CountryName", "CountryCode", "Parameter",  "ParameterCode",  "Year",    "Value")
+head(melted)
+
+melted_coded <- melted[,c("CountryCode", "ParameterCode",  "Year",    "Value")]
+
+wide_DF <- melted_coded %>% spread(ParameterCode, Value)
+```
+
+
+# Incorporating WHO Panel Data 
+
+```{r}
+# Panel DATA from http://people.stern.nyu.edu/wgreene/Econometrics/PanelDataSets.htm  
+# World Health Organization Panel Data on Health Care Attainment:  191 Countries, 5 Years (Some countries fewer)
+
+# This data has been used by many researchers to study the Health Care Survey assembled by WHO as part of the YEAR 2000 # World Health Report. On the course bibliography, see, for example, Greene (2004a).  Note, variables marked * were updated # with more recent sources in Greene (2004a). Missing COMPs for some of the variables in this data set are filled by using # fitted COMPs from a linear regression.  To set the proper sample for panel data analysis, use observations for which SMALL # = 0.  To obtain the balanced panel, then use only observations with GROUPTI = 5.
+# The variables in the file are
+# COMP = composite measure of health care attainment; LCOMP = logCOMP
+# DALE = Disability adjusted life expectancy (other measure); LDALE = logDALE
+# YEAR = 1993,...,1997;  TIME = 1,2,3,4,5;  T93, T94, T95, T96, T97 = YEAR dummy variables
+# HEXP = per capita health expenditure; LHEXP = logHEXP; LHEXP2 = log-squaredHEXP
+# HC3 = educational attainment; LHC = logHC3; LHC2 = log-squaredHC3; LHEXPHC = logHEXP * logHC3
+# SMALL = indicator for states, provinces, etc. SMALL > 0 implies internal political unit, = 0 implies country observation
+# COUNTRY = number assigned to country
+# STRATUM = another country indicator
+# GROUPTI = number of observations when SMALL = 0. Usually 5, some = 1, one country = 4.
+# OECD = dummy variable for OECD country (30 countries)
+# GINI = gini coefficient for income inequality
+# GEFF = world bank measure of government effectiveness*
+# VOICE = world bank measure of democratization of the political process*
+# TROPICS = dummy variable for tropical location
+# POPDEN = population density*
+# PUBTHE = proportion of health expenditure paid by public authorities
+# GDPC = normalized per capita GDP; LGDPC = logGDPC; LGDPC2 = log-squaredGDPC 
+
+Panel <- read.csv("WHOdata.csv") 
+#attach(Panel)
+
+
+# export to Israel vs Egypt data
+
+df2 <- read.csv("data-IsraelEgypt.csv")
+#EXTENDED COLUMNS
+# self explanatory
+# Negleted Tropical Diseas (gntd.org (http://gntd.org/))
+
+summary(df2)
+head(df2)
+coplot(GDPC ~ YEAR | COUNTRY, type="b", data=df2)        # Points and lines
+
+df2$LGDPC <- log(df2$GDPC)
+df2$LGDPC_G <- log(df2$GDPC_G)
+
+```
+
+
+# Plotting Stats Israel vs Egypt
+
+```{r}
+# GDP PER CAPITA
+ggplot(data = df2, aes(x=YEAR, y=log(GDPC))) + 
+  geom_point(aes(x=YEAR, y=log(GDPC), color=COUNTRY)) +
+  geom_path(aes(x=YEAR, y=log(GDPC), color=COUNTRY)) +
+  labs(title = "GDP per Capita, Israel & Egypt, 1993-1997", y = "GDP per Capita" )
+
+# GDP GROWTH
+ggplot(data = df2, aes(x=YEAR, y=GDPC_G)) + 
+  geom_point(aes(x=YEAR, y=GDPC_G, color=COUNTRY)) +
+  geom_line(aes(x=YEAR, y=GDPC_G, color=COUNTRY)) +
+  labs(title = "GDP Yearly Growth per Capita, Israel & Egypt, 1993-1997", y = "GDP Growth Percent" )
+
+# LOG GDP PER CAPITA
+ggplot(data = df2, aes(x=YEAR, y=LGDPC)) + 
+  geom_point(aes(x=YEAR, y=LGDPC, color=COUNTRY)) +
+  geom_path(aes(x=YEAR, y=LGDPC, color=COUNTRY)) +
+  labs(title = "LOG GDP per Capita, Israel & Egypt, 1993-1997", y = "LOG GDP per Capita" )
+
+
+
+
+
+
+```
+
+
+# Descriptive Statistics of Constant Factors
+```{r}
+df2["DALE10"] <- df2$DALE / 10
+df2["Health Expense"] <- df2$HEXP / 1000
+df2["Health Comp"] <- df2$COMP / 100
+df2["HealthExp % Public"] <- df2$PUBTHE / 100
+df2["Education"] <- df2$HC3 / 10
+df2["Business_Hurdle"] <- df2$BUSINESS_HURDLES / 100
+ 
+# aggregate means for all variables
+means<-aggregate(df2,by=list(df2$COUNTRY),mean)
+head(means)
+means["COUNTRY"] <- means$Group.1
+head(means)
+
+
+# reshape into long format
+library(reshape2)
+means.long <- melt(means[,c(2:ncol(means))],id.vars="COUNTRY")
+head(means.long)
+
+names(means)
+
+
+### GEOGRAPHICAL FACTORS
+geo <- means.long[means.long$variable %in% c( "DALE10","POPDEN10TH","COASTLINE","SEAS","LATITUDE","SUMMER_TMP","WINTER_TMP"),]
+
+library(ggplot2)
+ggplot(geo,aes(x=variable,y=value,fill=factor(COUNTRY)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_color_manual(name="COUNTRY",breaks=c(1, 2), 
+                     values = c("red","blue"), labels=c("Egypt", "Israel"))+
+  guides(fill=guide_legend(title=""))+
+  theme(legend.position = "top")+
+  labs(title = "Geographical Indicators", x="Indicator", y="Mean Value" )
+
+
+### INSTITUTIONAL FACTORS
+inst <- means.long[means.long$variable %in% 
+c( "GEFF","VOICE","HealthExp % Public","GINI","Health Expense","Education","Health Comp", "CORRUPT_CLEAN", "Business_Hurdle"),]
+
+
+
+ggplot(inst,aes(x=variable,y=value,fill=factor(COUNTRY)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_color_manual(name="COUNTRY",breaks=c(1, 2), 
+                     values = c("red","blue"), labels=c("Egypt", "Israel"))+
+  guides(fill=guide_legend(title=""))+
+  theme(legend.position = "top")+
+  labs(title = "Institutional Indicators", x="Indicator", y="Mean Value" )
+
+```
+
+
+
+# CASE STUDY - ISRAEL VS EGYPT PANEL REGRESSION
+
+# Correlation Plot
+
+```{r}
+names(df2)
+cor_columns <- c("GDPC", "COMP", "HEXP", "HC3", "DALE", "GEFF","VOICE","CORRUPT_CLEAN","BUSINESS_HURDLES","COASTLINE","AREA","SEAS","LATITUDE", "SUMMER_TMP")
+cordata <- df2[,cor_columns] #<- lapply(df2[,values], as.numeric)
+cor(df2[df2$COUNTRY == "Israel",])
+    
+    
+# Correlation Plot
+library(corrplot)
+M <- cor(cordata)
+corrplot(M, method = "square")
+```
+
+# REGRESSSION 
+```{r}
+
+values <- names(df2[,2:length(names(df2))])
+
+# turn all columns to numeric
+df2[,values] <- lapply(df2[,values], as.numeric)
+
+df2$Education
+#Panel <- pdata.frame(df2) # set panel structure
+Panel <- df2
+#summary(Panel)
+attach(Panel)
+
+#1. Descriptive statistics
+# summary(Panel)
+# coplot(GDPC ~ YEAR | COUNTRY, type="b", data=Panel)        # Points and lines
+
+#### INSTITUTIONS ###### 
+
+
+formula_inst <- GDPC ~ factor(YEAR) + factor(COUNTRY) + HEXP + HC3 + DALE + GINI + PUBTHE + GEFF + VOICE + CORRUPT_CLEAN + BUSINESS_HURDLES
+
+formula_inst <- GDPC ~ HEXP + HC3 + DALE + GINI 
+
+#2. pooled model
+ols <- lm(GDPC ~ `Health Expense`  + Education   + factor(YEAR), data = df2)
+summary(ols)
+
+#3. COUNTRY fixed effects
+COUNTRY_fe <-lm(GDPC ~ `Health Expense` + `Health Comp`  + Education + DALE  + factor(COUNTRY), data = df2)
+summary(COUNTRY_fe)
+
+
+# YEAR fixed effects
+YEAR_fe <-lm(GDPC ~ HEXP + HC3 + DALE + factor(YEAR), data = df2)
+summary(YEAR_fe)
+
+# YEAR and time fixed effects
+COUNTRY_YEAR_fe<-lm(GDPC ~ HEXP + HC3 + DALE  +factor(COUNTRY)+ factor(YEAR), data = df2)
+summary(COUNTRY_YEAR_fe)
+
+#hist(HEXP/10)
+#hist(GINI)
+```
+
+
+
