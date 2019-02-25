@@ -1,0 +1,314 @@
+---
+title: 'Tomer: Asignment 1 - EconStats Tutorial'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+This notebook shows the computer related work created for Assignment 1 in EconStats tutorial. 
+
+# Setup
+```{r}
+# load libraries
+require("ggplot2", "ggthemes")
+# unloadNamespace("cowplot")
+# disable scientific notation
+options(scipen = 999)
+```
+
+
+# Problem 2 Plots
+https://rpsychologist.com/d3/tdist/
+
+```{r}
+# Drawing Student's T distribution with rejection areas and critical t and p values
+ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
+  stat_function(fun = dt,args = list(df = 38), geom = "area", fill="gray", alpha=0.5) +
+  geom_segment(aes(x =  1.921, y = 0, xend =  1.921, yend = 0.064), color="skyblue3", size=1) +
+  stat_function(fun = dt, args = list(df = 38), size=1) +
+  labs(title="Student's t Distribution, dof=38", x="t", y="density") +
+  stat_function(fun = dt,args = list(df = 38), 
+                xlim = c(-4,-2.02), geom = "area", fill="red", alpha=0.5) +
+  stat_function(fun = dt,args = list(df = 38), 
+                xlim = c(2.02,4), geom = "area", fill="red", alpha=0.5) +
+  theme_stata()
+```
+
+
+
+# Problem 3
+
+```{r}
+# downloaded stockton2 dataset from: https://github.com/ccolonescu/PoEdata/blob/master/data/stockton2.rda
+load("./data/stockton2.rda")
+dfs <- stockton2
+rm(stockton2)
+summary(dfs)
+head(dfs)
+```
+
+## 3.a
+Estimate the log-linear model ln(PRICE)=B1+B2SQFT+e. Interpret the estimated model parameters. Calculate the slope and elasticity at the sample means, if necessary. 
+
+
+```{r}
+# log-linear
+lm1 <- lm(I(log(price)) ~ sqft, data=dfs)
+summary(lm1)
+```
+
+### a: slope and elasticity
+For a log-linear model, the slope is $b_2*y$, and Elasticity is $b_2*x$; about the sample means.
+```{r}
+# sample means:
+y_mean = mean(log(dfs$price))
+x_mean = mean(dfs$sqft)
+# save b2
+b2_lm1 <- lm1$coefficients[2]
+
+# log-linear slope: b_2*y
+print(paste("Slope:",b2_lm1*y_mean))
+# log-linear elasticity: b_2*x
+print(paste("Elasticity:",b2_lm1*x_mean))
+
+```
+
+dPRICE/dSQFT = 67.23
+The slope coefficient b2=0.000596 suggests that an increase of a unit 1 sqft is associated with a 0.06% increase in the price of the house. 
+
+
+##3.b
+Estimate the log-log model (PRICE)=1+2(SQFT)+e. Interpret the estimated parameters. Calculate the slope and elasticity at the sample means, if necessary. 
+```{r}
+# log-log
+lm2 <- lm(I(log(price)) ~ I(log(sqft)), data=dfs)
+summary(lm2)
+```
+The coefficient 1.00658 says that an increase in living area of 1% is associated with a 1increase in house price.
+
+### b: slope and elasticity
+For a log-log model, the slope is $b_2*y/x$, and Elasticity is $b_2$; about the sample means.
+```{r}
+# sample means:
+y_mean = mean(log(dfs$price))
+x_mean = mean(log(dfs$sqft))
+b2_lm1 <- lm1$coefficients[2] # save b2
+# log-linear slope: b_2*y
+print(paste("Slope:",b2_lm1/x_mean))
+# log-linear elasticity: b_2*x
+print(paste("Elasticity:",b2_lm1))
+```
+
+dPRICE/dSQFT  = 70.444
+The coefficient b2 in a log-log model, 1.0066, is the elasticity.
+Slope at x_mean is  0.0000812436216765968. 
+ 
+
+## 3.c 
+Compare the R2-value from the linear model PRICE=B1+B2*SQFT+e to the ‘‘generalized’’ R2 measure for the models in (a) and (b). 
+```{r}
+# linear model
+lm_lin <- lm(price ~ sqft, data=dfs)
+summary(lm_lin)
+```
+R-squared:  0.6721
+
+Generalized R^2: correlation between predicted and true y values, squared: [corr(y*y^)]^2
+Predicted  values need to be corrected to y_c: by multiplying by e raised to the power of error_variance/2. 
+```{r}
+# model in A - log-linear:
+generalized_log_r2 <- function(lm) {
+  pred_y <- exp(predict(lm)) # get prediction and transform back from log by taking antilog
+  pred_y <- pred_y*exp(var(lm$residuals)/2) # correct it: multiply by exp(error_variance/2)
+  return((cor(dfs$price, pred_y))^2)
+}
+print(paste("Model A - linear-log:", generalized_log_r2(lm1))) 
+print(paste("Model B - log-log:", generalized_log_r2(lm2))) 
+```
+
+The Linear model's R-squared was lower (worse) than the log-linear or the log-log model (the linear model had a Multiple R-squared:  0.6721,	Adjusted R-squared:  0.6717). The log-linear model had the best generalized R-squared, but only marginally so. That might mean that (1) from these models, we might want to choose the log-linear models, and that (2) it is not a very good fit, and we should try to make a better model, for example using polynomials or other features.
+
+## 3.D
+Construct histograms of the least squares residuals from each of the models in (a), (b), and (c) and obtain the Jarque–Bera statistics. Based on your observations, do you consider the distributions of the residuals to be compatible with an assumption of normality? 
+```{r}
+# load the Jarque-Bera Test
+#install.packages("tseries")
+require("tseries")
+#install.packages("DescTools")
+require(DescTools)
+```
+
+
+```{r}
+hist(lm1$residuals, breaks = 30) 
+jarque.bera.test(lm1$residuals)
+```
+	Jarque Bera Test
+
+data:  lm1$residuals
+X-squared = 78.854, df = 2, p-value < 2.2e-16
+
+
+```{r}
+hist(lm2$residuals, breaks = 30)
+jarque.bera.test(lm2$residuals)
+
+```
+
+```{r}
+hist(lm_lin$residuals, breaks = 30)
+jarque.bera.test(lm_lin$residuals)
+```
+
+However, the JB test is often too conservative. We can see that by seeing the many of the historgrams look relatively like a normal distribution, yet the JB test rejects that hypothesis of normality. There are other more general tests to use in this case, such as the Shapiro-Wilk normality test. 
+The Shapiro-Wilk test tends to have high power under a broad range of useful alternatives. It usually performs well and was highly regarded in other studies of power, but it's not always the best test since it depends on the context. I will use it since it proves powerful often and is familiar to many readers. 
+
+See:
+Chen, L. and Shapiro, S. (1995)
+"An Alternative test for normality based on normalized spacings."
+Journal of Statistical Computation and Simulation 53, 269-287.
+
+Let's see what will it say:
+
+```{r}
+library(stats)
+stats::shapiro.test(lm2$residuals)
+```
+
+The null hypothesis for this test is that the data are normally distributed. Since the p-value is below 0.05, we reject the null hypothesis and deduct, also by this test, that the residuals do NOT come from a normally distributed population.
+
+JB test:
+https://davegiles.blogspot.com/2014/02/some-things-you-should-know-about.html
+
+## 3.E - plotting residuals against sqft
+
+
+```{r}
+# first, let's predict values for each observation, using each model, and insert to the database
+
+# we need to transform back from log to exp.
+dfs[["a_ypred"]] <- exp(predict(lm1, dfs)) 
+dfs[["b_ypred"]] <- exp(predict(lm2, dfs))
+dfs[["c_ypred"]] <- predict(lm_lin, dfs)
+## model a
+require(ggplot2, ggthemes)
+require(ggthemes)
+
+qplot(x=dfs$sqft, y=lm1$residuals, main = "Residuals Plot of Model A: Log-Linear") + theme_stata()
+
+qplot(x=dfs$sqft, y=lm2$residuals, main = "Residuals Plot of Model B: Log-Log") + theme_stata()
+
+qplot(x=dfs$sqft, y=lm_lin$residuals, main = "Residuals Plot of Model C: Linear") + theme_stata()
+
+```
+
+
+
+## 3.F
+```{r}
+y_correct <- function(lm, sqftval) {
+  # get prediction and transform back from log by taking antilog
+  pred_y <- predict(lm, newdata = data.frame("sqft"=sqftval)) # predict 
+  pred_y <- exp(pred_y) # antilog
+  # correct it: multiply by exp(error_variance/2)
+  pred_y <- pred_y*exp(var(lm$residuals)/2)
+  return(pred_y)
+}
+sqftval=2700
+predA_2700 <- y_correct(lm=lm1, sqftval=2700)
+predB_2700 <- y_correct(lm=lm2, sqftval=2700)
+predC_2700 <- predict(lm_lin, newdata = data.frame("sqft"=2700))
+print(paste("Model A predicted for x = 2700, price =", predA_2700))
+print(paste("Model B predicted for x = 2700, price =", predB_2700))
+print(paste("Model C predicted for x = 2700, price =", predC_2700))
+
+```
+
+
+## 3.h 
+For each model in (a)–(c), construct a 95% prediction interval for the value of a house with 2700 square feet. 
+
+```{r}
+
+print("Model A (log-linear) prediction interval for sqft (x)=2700, price (y):")
+ci_corrected <- function(lm, sqftval) {
+  # get prediction and transform back from log by taking antilog
+  ci <- exp(predict(lm, newdata = data.frame("sqft"=sqftval), interval="confidence"))  
+  # correct it: multiply by exp(error_variance/2)
+  #ci <- ci*exp(var(lm$residuals)/2)
+  width = ci[3] - ci[2]
+  print(ci)
+  print(paste("width of CI = ", width))
+  print("--------------------------------")
+}
+
+sqftval = 2770
+ci_corrected(lm1, sqftval)
+ci_corrected(lm2, sqftval)
+
+
+nrow(dfs)
+print("Model C (linear) prediction interval for sqft (x)=2700, price (y):")
+ci <- predict(lm_lin, newdata=data.frame(sqft=sqftval), interval="confidence")
+width = ci[3] - ci[2]
+print(ci)
+print(paste("width of CI = ", width))
+```
+
+
+```{r}
+
+#print(paste("[",exp(11.7246728327), ",", exp(12.5227271673), "]"))
+var(lm1$residuals)
+```
+
+
+
+```{r}
+# require(cowplot)
+print(mean(dfs$sqft)) 
+qplot(dfs$sqft, main="Histogram of SQFT Values", binwidth=100)
+```
+
+
+
+# Plotting models
+
+
+```{r}
+# first, let's predict values for each observation, using each model, and insert to the database
+
+# we need to transform back from log to exp.
+dfs[["a_ypred"]] <- exp(predict(lm1, dfs)) 
+dfs[["b_ypred"]] <- exp(predict(lm2, dfs))
+dfs[["c_ypred"]] <- predict(lm_lin, dfs)
+## model a
+require(ggplot2)
+require(ggthemes)
+
+ggplot(data=dfs, aes(x=sqft, y=a_ypred)) +
+  geom_point(aes(y=price), color="orange", alpha=0.2) +
+  geom_point(color="blue") +
+  labs(title="Model A: Log-Linear") +
+  theme_stata()
+```
+
+
+```{r}
+ggplot(data=dfs, aes(x=sqft, y=b_ypred)) +
+  geom_point(aes(y=price), color="orange", alpha=0.2) +
+  geom_point(color="blue") +
+  labs(title="Model B: Log-Log") +
+  theme_stata()
+```
+
+```{r}
+
+ggplot(data=dfs, aes(x=sqft, y=c_ypred)) +
+  geom_point(aes(y=price), color="orange", alpha=0.2) +
+  geom_point(color="blue") +
+  labs(title="Model C: Linear") +
+  theme_stata()
+```
+
+
